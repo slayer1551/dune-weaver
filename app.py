@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from pathlib import Path
 from typing import List, Optional, Tuple, Dict, Any, Union
 import atexit
 import os
@@ -448,13 +449,21 @@ async def send_coordinate(request: CoordinateRequest):
         logger.error(f"Failed to send coordinate: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/download/{filename}")
-async def download_file(filename: str):
-    return FileResponse(
-        os.path.join(pattern_manager.THETA_RHO_DIR, filename),
-        filename=filename
-    )
+@app.get("/download/{filepath:path}")
+async def download_file(filepath: str):
+    # Resolve and make sure it’s still under THETA_RHO_DIR
+    base = Path(pattern_manager.THETA_RHO_DIR).resolve()
+    full = (base / filepath).resolve()
+    if not str(full).startswith(str(base)):
+        raise HTTPException(400, "Invalid file path")
+    if not full.is_file():
+        raise HTTPException(404, "File not found")
 
+    return FileResponse(
+        path=full,
+        filename=full.name,
+        media_type="application/octet-stream",
+    )
 @app.get("/serial_status")
 async def serial_status():
     connected = state.conn.is_connected() if state.conn else False
